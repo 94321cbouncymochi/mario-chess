@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Chess Gauntlet - 500 Levels</title>
+    
+    <!-- Tailwind CSS (V4) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    
+    <!-- Chessboard.js CSS and dependency scripts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        
+        .font-retro {
+            font-family: 'Press Start 2P', monospace;
+        }
+        
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #f59e0b;
+            border-radius: 4px;
+            border: 2px solid #0f172a;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #d97706;
+        }
+
+        /* Overworld Level Node Animations */
+        @keyframes pulse-gold {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            50% { transform: scale(1.1); box-shadow: 0 0 15px 5px rgba(245, 158, 11, 0.4); }
+        }
+        .active-level-node {
+            animation: pulse-gold 2s infinite;
+        }
+
+        /* Chessboard.js Custom Retro Mario Colors */
+        .black-3c85d {
+            background-color: #b91c1c !important; /* Mario Red */
+            color: #fef08a !important;
+        }
+        .white-1e1d7 {
+            background-color: #fef08a !important; /* Mario Yellow */
+            color: #b91c1c !important;
+        }
+        
+        /* Highlighting for mobile selection and helper dots */
+        .highlight-square {
+            box-shadow: inset 0 0 4px 4px #fbbf24 !important;
+        }
+        
+        .highlight-destination {
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.6) 24%, transparent 25%) !important;
+        }
+
+        /* Premium capture highlights overlayed on top of target piece */
+        .highlight-capture {
+            box-shadow: inset 0 0 0 6px #ef4444 !important;
+            background-color: rgba(239, 68, 68, 0.2) !important;
+        }
+    </style>
+</head>
+<body class="bg-[#121824] text-slate-100 min-h-screen flex flex-col antialiased selection:bg-yellow-500 selection:text-slate-900">
+
+    <!-- Toast / Notification banner -->
+    <div id="toast-notification" class="fixed top-4 right-4 z-50 transform translate-y-[-150%] transition-transform duration-300 bg-amber-500 text-slate-950 font-bold py-3 px-6 rounded-lg shadow-2xl flex items-center gap-3 border-2 border-white">
+        <span class="text-xl">⭐️</span>
+        <span id="toast-message" class="font-retro text-[10px] leading-relaxed">Notification Message</span>
+        <button onclick="hideToast()" class="text-slate-950 hover:text-white font-bold text-lg ml-2">&times;</button>
+    </div>
+
+    <!-- Main Container -->
+    <main class="flex-1 container mx-auto p-4 max-w-7xl flex flex-col">
+        
+        <!-- Retro Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center gap-4 border-b-4 border-dashed border-slate-800 pb-4 mb-6">
+            <div class="text-center md:text-left">
+                <div class="flex items-center justify-center md:justify-start gap-3">
+                    <span class="text-4xl animate-bounce">🍄</span>
+                    <h1 class="text-2xl font-retro text-yellow-400 tracking-wider">
+                        SUPER CHESS
+                    </h1>
+                </div>
+                <p class="text-slate-400 text-xs font-retro mt-1 tracking-widest text-[9px]">500-LEVEL OVERWORLD CHALLENGE</p>
+            </div>
+            
+            <!-- Game Stats Row -->
+            <div class="flex flex-wrap items-center justify-center gap-4">
+                <!-- Coin Count -->
+                <div class="flex items-center gap-2 bg-slate-900 border-2 border-yellow-500 px-4 py-2 rounded-xl shadow-lg">
+                    <span class="text-yellow-400 animate-spin text-xl">🪙</span>
+                    <div class="font-retro text-[11px]">
+                        COINS: <span id="coin-count" class="text-yellow-400">0000</span>
+                    </div>
+                </div>
+
+                <!-- Progress Tracker -->
+                <div class="flex items-center gap-3 bg-slate-900 border-2 border-indigo-500 p-2.5 rounded-xl shadow-lg">
+                    <div class="text-right">
+                        <div class="text-[8px] font-retro text-indigo-400">WORLD PROGRESS</div>
+                        <div class="text-xs font-retro mt-1">
+                            LV <span id="max-level-display" class="text-green-400">1</span>/500
+                        </div>
+                    </div>
+                    <div class="w-8 h-8 rounded-lg bg-indigo-950 flex items-center justify-center text-xl">
+                        👑
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dynamic Screen Toggler -->
+        <div class="mb-6 flex justify-center gap-4">
+            <button id="view-map-btn" class="px-6 py-3 font-retro text-xs bg-yellow-500 hover:bg-yellow-400 text-slate-950 rounded-xl border-b-4 border-yellow-700 active:border-b-0 transition-all transform active:translate-y-1">
+                🗺️ WORLD MAP
+            </button>
+            <button id="view-battle-btn" class="px-6 py-3 font-retro text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl border-b-4 border-indigo-850 active:border-b-0 transition-all transform active:translate-y-1">
+                ⚔️ BATTLE BOARD
+            </button>
+        </div>
+
+        <!-- SCREEN 1: THE MARIO WORLD OVERWORLD MAP -->
+        <section id="screen-map" class="space-y-6">
+            
+            <!-- World Carousel / Selector Card -->
+            <div class="bg-slate-900/95 border-4 border-slate-800 rounded-3xl p-6 shadow-2xl">
+                <h2 class="text-center font-retro text-sm text-yellow-400 mb-4 tracking-widest">SELECT YOUR WORLD</h2>
+                
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3" id="world-select-container">
+                    <!-- Dynamic Generation of Worlds 1-10 -->
+                </div>
+            </div>
+
+            <!-- Current World Level Nodes Map Grid -->
+            <div class="bg-slate-950 border-4 border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                <div class="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-20"></div>
+                
+                <div class="relative z-10">
+                    <div class="flex flex-col sm:flex-row justify-between items-center gap-2 mb-6 border-b border-slate-800 pb-4">
+                        <div class="flex items-center gap-2">
+                            <span id="world-theme-icon" class="text-2xl">🌲</span>
+                            <h3 id="current-world-title" class="font-retro text-xs text-white">WORLD 1: GOOMBA GARDENS</h3>
+                        </div>
+                        <div class="font-retro text-[9px] text-amber-500" id="world-rules-info">
+                            STOCKFISH: 10TH BEST MOVE
+                        </div>
+                    </div>
+
+                    <!-- 50 level dots for the currently selected World -->
+                    <div class="grid grid-cols-5 sm:grid-cols-10 gap-4" id="level-nodes-grid">
+                        <!-- Filled programmatically -->
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- SCREEN 2: CHESS BATTLE ARENA (HIDDEN BY DEFAULT) -->
+        <section id="screen-battle" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- Left Side Actions/Stats (Col 3) -->
+            <div class="lg:col-span-3 space-y-6">
+                
+                <!-- Battle Stats Card -->
+                <div class="bg-slate-900/95 border-4 border-slate-800 p-5 rounded-2xl shadow-xl space-y-4">
+                    <h2 class="font-retro text-[10px] text-yellow-400 flex items-center gap-2">
+                        <span>⚔️</span> LEVEL CHALLENGE
+                    </h2>
+                    
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <div class="text-[9px] font-retro text-slate-500">CURRENT TARGET</div>
+                        <div class="text-sm font-retro text-white mt-1">LEVEL <span id="battle-level-val" class="text-indigo-400">1</span></div>
+                        <div class="text-[8px] font-retro text-slate-400 mt-2">World Move Engine:</div>
+                        <div id="battle-rank-val" class="text-[9px] font-retro text-emerald-400 mt-1">10th Best Move</div>
+                        <div class="text-[8px] font-retro text-yellow-500 mt-2">✨ Mobile Hint:</div>
+                        <div class="text-[7px] text-slate-400 mt-0.5 leading-normal">Tap a piece, then tap any highlighted square to move! Or drag and drop. Captures show as red frames!</div>
+                    </div>
+
+                    <!-- Override Engine Dropdown -->
+                    <div class="space-y-1 pt-2">
+                        <label class="block text-[8px] font-retro text-slate-400">MANUAL SKILL OVERRIDE</label>
+                        <select id="move-rank-select" class="w-full bg-slate-950 border-2 border-slate-800 rounded-lg p-2 text-white font-retro text-[9px] focus:outline-none focus:border-yellow-500">
+                            <option value="dynamic">Enforce World Rules</option>
+                            <option value="1">1st Best Move (Bowser Mode)</option>
+                            <option value="2">2nd Best Move</option>
+                            <option value="3">3rd Best Move</option>
+                            <option value="5">5th Best Move</option>
+                            <option value="10">10th Best Move (Goomba Mode)</option>
+                        </select>
+                    </div>
+
+                    <button id="start-btn" class="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-retro text-xs py-3.5 px-4 rounded-xl border-b-4 border-yellow-700 active:border-b-0 transition-all transform active:translate-y-1">
+                        RESET STAGE
+                    </button>
+                </div>
+
+                <!-- Saved Games Log -->
+                <div class="bg-slate-900/95 border-4 border-slate-800 p-5 rounded-2xl shadow-xl space-y-3">
+                    <h3 class="font-retro text-[9px] text-slate-300 flex justify-between items-center">
+                        <span>💾 STAGE LOGS</span>
+                        <span id="saved-count" class="bg-slate-950 text-indigo-400 px-2 py-0.5 rounded text-[8px]">0</span>
+                    </h3>
+                    <div id="games-list" class="space-y-2 max-h-40 overflow-y-auto pr-1 text-xs">
+                        <!-- Dynamically filled -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Chessboard.js Board Block (Col 5) -->
+            <div class="lg:col-span-5 flex flex-col items-center">
+                <div class="w-full bg-slate-900/60 p-4 rounded-3xl border-4 border-slate-800 shadow-xl flex flex-col items-center">
+                    
+                    <!-- Opponent Player Info Bar -->
+                    <div class="w-full flex justify-between items-center mb-3 px-1 font-retro text-[9px]">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                            <span class="text-red-400">ENEMY: STOCKFISH (D16)</span>
+                        </div>
+                        <span id="engine-status" class="bg-slate-950 px-2.5 py-1 rounded-full text-indigo-400 border border-slate-800">READY</span>
+                    </div>
+
+                    <!-- Chessboard.js DOM Wrapper -->
+                    <div class="w-full max-w-[480px] relative" id="board-container">
+                        <div id="board" class="w-full rounded-2xl overflow-hidden border-4 border-slate-850 shadow-2xl"></div>
+                        
+                        <!-- Interactive Pawn Promotion Selection Overlay Modal -->
+                        <div id="promotion-modal" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center z-50 rounded-2xl">
+                            <div class="bg-slate-900 border-4 border-yellow-500 p-6 rounded-2xl text-center max-w-[280px] shadow-2xl">
+                                <p class="font-retro text-[10px] text-yellow-400 mb-1">PROMOTION!</p>
+                                <p class="text-slate-400 text-[8px] mb-4">CHOOSE PIECE POWERUP</p>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <button onclick="window.selectPromotion('q')" class="py-3 px-4 bg-slate-850 hover:bg-yellow-500 hover:text-slate-950 border-2 border-slate-700 rounded-xl text-3xl transition-all duration-150 transform active:scale-95">♛</button>
+                                    <button onclick="window.selectPromotion('r')" class="py-3 px-4 bg-slate-850 hover:bg-yellow-500 hover:text-slate-950 border-2 border-slate-700 rounded-xl text-3xl transition-all duration-150 transform active:scale-95">♜</button>
+                                    <button onclick="window.selectPromotion('b')" class="py-3 px-4 bg-slate-850 hover:bg-yellow-500 hover:text-slate-950 border-2 border-slate-700 rounded-xl text-3xl transition-all duration-150 transform active:scale-95">♝</button>
+                                    <button onclick="window.selectPromotion('n')" class="py-3 px-4 bg-slate-850 hover:bg-yellow-500 hover:text-slate-950 border-2 border-slate-700 rounded-xl text-3xl transition-all duration-150 transform active:scale-95">♞</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Player Info Bar -->
+                    <div class="w-full flex justify-between items-center mt-3 px-1 font-retro text-[9px]">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                            <span class="text-green-400">PLAYER: YOU</span>
+                        </div>
+                        <span id="game-status" class="text-yellow-400">YOUR TURN</span>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Post-Game Match Evaluator Panel (Col 4) -->
+            <div class="lg:col-span-4 space-y-6 font-retro">
+                
+                <div class="bg-slate-900/95 border-4 border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col h-[520px]">
+                    
+                    <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                        <h2 class="text-[9px] text-slate-200">
+                            📊 EVALUATION (D16)
+                        </h2>
+                        <button id="analyze-btn" disabled 
+                            class="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white text-[8px] px-3 py-2 rounded-lg transition-all shadow-md">
+                            ANALYZE
+                        </button>
+                    </div>
+
+                    <!-- Advantage Metric Tracker -->
+                    <div class="my-4">
+                        <div class="text-[8px] text-slate-400 mb-2 flex justify-between">
+                            <span>ADVANTAGE METER</span>
+                            <span id="eval-metric-text" class="text-indigo-400">0.00</span>
+                        </div>
+                        <div class="w-full bg-slate-950 h-3 rounded-full overflow-hidden flex border border-slate-800">
+                            <div id="white-eval-bar" class="bg-white h-full transition-all duration-300" style="width: 50%;"></div>
+                            <div id="black-eval-bar" class="bg-slate-800 h-full transition-all duration-300" style="width: 50%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Side-by-side Scorecard Stats -->
+                    <div id="analysis-summary-card" class="hidden grid grid-cols-2 gap-2 mb-3 p-2 bg-slate-950 rounded-lg border border-slate-800 text-[7px] leading-relaxed">
+                        <div class="border-r border-slate-800 pr-2">
+                            <span class="text-white block font-bold mb-1">YOU (WHITE)</span>
+                            <div class="space-y-0.5 text-slate-400">
+                                <div>Brilliant: <span id="w-stat-brilliant" class="text-purple-400 font-bold">0</span></div>
+                                <div>Great: <span id="w-stat-great" class="text-cyan-400 font-bold">0</span></div>
+                                <div>Best/Excel: <span id="w-stat-best" class="text-emerald-400 font-bold">0</span></div>
+                                <div>Mistake/Blund: <span id="w-stat-mistake" class="text-red-400 font-bold">0</span></div>
+                            </div>
+                        </div>
+                        <div class="pl-2">
+                            <span class="text-slate-400 block font-bold mb-1">STOCKFISH</span>
+                            <div class="space-y-0.5 text-slate-400">
+                                <div>Brilliant: <span id="b-stat-brilliant" class="text-purple-400 font-bold">0</span></div>
+                                <div>Great: <span id="b-stat-great" class="text-cyan-400 font-bold">0</span></div>
+                                <div>Best/Excel: <span id="b-stat-best" class="text-emerald-400 font-bold">0</span></div>
+                                <div>Mistake/Blund: <span id="b-stat-mistake" class="text-red-400 font-bold">0</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Evaluation Analysis List -->
+                    <div class="flex-1 overflow-y-auto bg-slate-950 rounded-xl border border-slate-850 p-3" id="analysis-box">
+                        <div class="h-full flex flex-col items-center justify-center text-center p-4">
+                            <span class="text-3xl mb-2">📋</span>
+                            <p class="text-[9px] text-slate-400">Awaiting Battle Moves</p>
+                            <p class="text-slate-500 text-[8px] mt-2 leading-relaxed">Play your game to the end, then run the evaluation to view brilliant, book, or blunder move classifications!</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t-4 border-dashed border-slate-900 bg-slate-950/60 py-4 text-center">
+        <p class="font-retro text-[8px] text-slate-600 tracking-widest">© SUPER CHESS GAUNTLET INC. 2026 - AGE-SAFE FAMILY APPROVED</p>
+    </footer>
+
+    <script>
+        // --- CONSTANTS & SYSTEM CONFIGURATIONS ---
+        const STOCKFISH_CDN = "https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js";
+        
+        let game = new Chess();
+        let board = null;
+        let engineWorker = null;
+        let analysisWorker = null;
+        
+        // Progress State
+        let maxUnlockedLevel = 1;
+        let currentSelectedLevel = 1;
+        let currentSelectedWorld = 1;
+        let coinsCount = 0;
+
+        // Interactive States
+        let tappedSourceSquare = null;
+        let pendingPromotionMove = null;
+
+        // Worlds Metadata Mapping (Mario Styles)
+        const worldsMetadata = [
+            { id: 1, name: "Goomba Gardens", icon: "🌲", startLevel: 1, endLevel: 50, color: "bg-emerald-600 border-emerald-400", rule: "10th Best Move" },
+            { id: 2, name: "Koopa Dunes", icon: "🏜️", startLevel: 51, endLevel: 100, color: "bg-amber-600 border-amber-400", rule: "9th Best Move" },
+            { id: 3, name: "Cheep Cheep Bay", icon: "🌊", startLevel: 101, endLevel: 150, color: "bg-blue-600 border-blue-400", rule: "8th Best Move" },
+            { id: 4, name: "Yoshi Valley", icon: "🦕", startLevel: 151, endLevel: 200, color: "bg-green-600 border-green-400", rule: "7th Best Move" },
+            { id: 5, name: "Shy Guy Ship", icon: "🏴‍☠️", startLevel: 201, endLevel: 250, color: "bg-indigo-600 border-indigo-400", rule: "6th Best Move" },
+            { id: 6, name: "Booster Pass", icon: "⛰️", startLevel: 251, endLevel: 300, color: "bg-orange-600 border-orange-400", rule: "5th Best Move" },
+            { id: 7, name: "Donut Plains", icon: "🍩", startLevel: 301, endLevel: 350, color: "bg-yellow-600 border-yellow-400", rule: "4th Best Move" },
+            { id: 8, name: "Vanilla Dome", icon: "❄️", startLevel: 351, endLevel: 400, color: "bg-sky-600 border-sky-400", rule: "3rd Best Move" },
+            { id: 9, name: "Star Road", icon: "⭐", startLevel: 401, endLevel: 450, color: "bg-purple-600 border-purple-400", rule: "2nd Best Move" },
+            { id: 10, name: "Bowser's Castle", icon: "🏰", startLevel: 451, endLevel: 500, color: "bg-red-700 border-red-500", rule: "1st Best Move (Bowser Mode)" }
+        ];
+
+        // --- SCREEN VIEW MANAGER ---
+        const screenMap = document.getElementById('screen-map');
+        const screenBattle = document.getElementById('screen-battle');
+        const viewMapBtn = document.getElementById('view-map-btn');
+        const viewBattleBtn = document.getElementById('view-battle-btn');
+
+        viewMapBtn.addEventListener('click', () => {
+            screenMap.classList.remove('hidden');
+            screenBattle.classList.add('hidden');
+            viewMapBtn.className = "px-6 py-3 font-retro text-xs bg-yellow-500 text-slate-950 rounded-xl border-b-4 border-yellow-700 active:border-b-0 transition-all transform active:translate-y-1";
+            viewBattleBtn.className = "px-6 py-3 font-retro text-xs bg-indigo-600 text-white rounded-xl border-b-4 border-indigo-850 active:border-b-0 transition-all transform active:translate-y-1";
+        });
+
+        viewBattleBtn.addEventListener('click', () => {
+            screenMap.classList.add('hidden');
+            screenBattle.classList.remove('hidden');
+            viewMapBtn.className = "px-6 py-3 font-retro text-xs bg-slate-700 text-slate-100 rounded-xl border-b-4 border-slate-900 active:border-b-0 transition-all transform active:translate-y-1";
+            viewBattleBtn.className = "px-6 py-3 font-retro text-xs bg-yellow-500 text-slate-950 rounded-xl border-b-4 border-yellow-700 active:border-b-0 transition-all transform active:translate-y-1";
+            
+            if (board) {
+                board.resize();
+            }
+        });
+
+        // --- TOAST NOTIFICATIONS ---
+        function showToast(message) {
+            const toast = document.getElementById('toast-notification');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.innerText = message;
+            toast.style.transform = "translateY(0%)";
+            setTimeout(hideToast, 4000);
+        }
+
+        function hideToast() {
+            const toast = document.getElementById('toast-notification');
+            toast.style.transform = "translateY(-150%)";
+        }
+
+        // --- MAP GENERATOR (MARIO STYLE) ---
+        function getLevelRuleRank(lvl) {
+            if (lvl <= 50) return 10;
+            if (lvl <= 100) return 9;
+            if (lvl <= 150) return 8;
+            if (lvl <= 200) return 7;
+            if (lvl <= 250) return 6;
+            if (lvl <= 300) return 5;
+            if (lvl <= 350) return 4;
+            if (lvl <= 400) return 3;
+            if (lvl <= 450) return 2;
+            return 1;
+        }
+
+        function renderWorldOverworld() {
+            const wContainer = document.getElementById('world-select-container');
+            if (!wContainer) return;
+            wContainer.innerHTML = "";
+
+            worldsMetadata.forEach(world => {
+                const card = document.createElement('button');
+                const isCurrentWorld = currentSelectedWorld === world.id;
+                const isUnlockedWorld = maxUnlockedLevel >= world.startLevel;
+
+                card.className = `p-3 rounded-2xl flex flex-col items-center justify-center border-2 text-center transition-all cursor-pointer ${
+                    isCurrentWorld ? 'ring-4 ring-yellow-400 bg-slate-800' : 'bg-slate-950'
+                } ${isUnlockedWorld ? 'border-slate-700 hover:border-yellow-500' : 'opacity-40 border-slate-900 cursor-not-allowed'}`;
+
+                card.innerHTML = `
+                    <span class="text-2xl">${world.icon}</span>
+                    <span class="font-retro text-[8px] mt-2 block text-slate-300">WORLD ${world.id}</span>
+                    <span class="text-[7px] font-retro text-slate-500 block truncate max-w-full">${world.name}</span>
+                `;
+
+                if (isUnlockedWorld) {
+                    card.onclick = () => {
+                        currentSelectedWorld = world.id;
+                        renderWorldOverworld();
+                        renderLevelNodes();
+                    };
+                }
+                wContainer.appendChild(card);
+            });
+        }
+
+        function renderLevelNodes() {
+            const world = worldsMetadata[currentSelectedWorld - 1];
+            const titleEl = document.getElementById('current-world-title');
+            const iconEl = document.getElementById('world-theme-icon');
+            const infoEl = document.getElementById('world-rules-info');
+            const grid = document.getElementById('level-nodes-grid');
+
+            if (titleEl) titleEl.innerText = `WORLD ${world.id}: ${world.name.toUpperCase()}`;
+            if (iconEl) iconEl.innerText = world.icon;
+            if (infoEl) infoEl.innerText = `STOCKFISH PERSPECTIVE: ${world.rule.toUpperCase()}`;
+            if (!grid) return;
+
+            grid.innerHTML = "";
+
+            for (let l = world.startLevel; l <= world.endLevel; l++) {
+                const node = document.createElement('button');
+                const isUnlocked = l <= maxUnlockedLevel;
+                const isBeaten = l < maxUnlockedLevel;
+                const isActive = l === maxUnlockedLevel;
+
+                let nodeStyles = "w-12 h-12 rounded-full font-retro text-[10px] flex items-center justify-center transition-all border-4 relative ";
+
+                if (isActive) {
+                    nodeStyles += "bg-yellow-500 border-white text-slate-950 active-level-node cursor-pointer";
+                } else if (isBeaten) {
+                    nodeStyles += "bg-emerald-600 border-emerald-400 text-white cursor-pointer";
+                } else if (isUnlocked) {
+                    nodeStyles += "bg-slate-700 border-slate-500 text-white cursor-pointer";
+                } else {
+                    nodeStyles += "bg-slate-950 border-slate-900 text-slate-700 cursor-not-allowed";
+                }
+
+                node.className = nodeStyles;
+                
+                let decorator = "";
+                if (isActive) decorator = `<span class="absolute -top-1 -right-1 text-xs">🍄</span>`;
+                if (isBeaten) decorator = `<span class="absolute -top-1 -right-1 text-[8px]">⭐️</span>`;
+
+                node.innerHTML = `
+                    ${decorator}
+                    <span>${l}</span>
+                `;
+
+                if (isUnlocked) {
+                    node.onclick = () => {
+                        currentSelectedLevel = l;
+                        document.getElementById('battle-level-val').innerText = l;
+                        
+                        const rankRule = getLevelRuleRank(l);
+                        let rankText = `${rankRule}th Best Move`;
+                        if (rankRule === 1) rankText = "1st Best Move (Bowser)";
+                        if (rankRule === 2) rankText = "2nd Best Move";
+                        if (rankRule === 3) rankText = "3rd Best Move";
+                        document.getElementById('battle-rank-val').innerText = rankText;
+
+                        // Switch to Battle Board View instantly
+                        viewBattleBtn.click();
+                        // Trigger Board Reset with the selected Level params
+                        document.getElementById('start-btn').click();
+                    };
+                }
+                grid.appendChild(node);
+            }
+        }
+
+        // --- MOBILE SELECTION & HIGHLIGHT HELPERS ---
+        function clearHighlights() {
+            $('#board .square-55d63').removeClass('highlight-square');
+            $('#board .square-55d63').removeClass('highlight-destination');
+            $('#board .square-55d63').removeClass('highlight-capture');
+        }
+
+        function highlightSquare(square) {
+            $('#board .square-' + square).addClass('highlight-square');
+        }
+
+        function highlightDestinations(destinations) {
+            destinations.forEach(square => {
+                const targetPiece = game.get(square);
+                if (targetPiece) {
+                    // Highlights with red border and overlay for captures
+                    $('#board .square-' + square).addClass('highlight-capture');
+                } else {
+                    // Standard helper target dots
+                    $('#board .square-' + square).addClass('highlight-destination');
+                }
+            });
+        }
+
+        // Helper to check if a pawn movement represents a promotion
+        function isPromotionMove(source, target) {
+            const piece = game.get(source);
+            if (piece && piece.type === 'p') {
+                const rank = parseInt(target[1], 10);
+                if ((piece.color === 'w' && rank === 8) || (piece.color === 'b' && rank === 1)) {
+                    const validMoves = game.moves({ square: source, verbose: true });
+                    return validMoves.some(m => m.to === target);
+                }
+            }
+            return false;
+        }
+
+        function showPromotionModal() {
+            document.getElementById('promotion-modal').classList.remove('hidden');
+        }
+
+        function hidePromotionModal() {
+            document.getElementById('promotion-modal').classList.add('hidden');
+        }
+
+        // Globally accessible selectPromotion method
+        window.selectPromotion = function(pieceCode) {
+            if (pendingPromotionMove) {
+                game.move({
+                    from: pendingPromotionMove.from,
+                    to: pendingPromotionMove.to,
+                    promotion: pieceCode
+                });
+                board.position(game.fen());
+                hidePromotionModal();
+                pendingPromotionMove = null;
+                updateStatusDisplay();
+                setTimeout(makeEngineMove, 350);
+            }
+        };
+
+        // --- CHESSBOARD.JS INTERACTIVE LOGIC ---
+        function onDragStart (source, piece, position, orientation) {
+            if (game.game_over()) return false;
+            if (piece.search(/^b/) !== -1) return false;
+            
+            clearHighlights();
+            tappedSourceSquare = source;
+            highlightSquare(source);
+            
+            const moves = game.moves({ square: source, verbose: true });
+            highlightDestinations(moves.map(m => m.to));
+        }
+
+        function onDrop (source, target) {
+            if (isPromotionMove(source, target)) {
+                pendingPromotionMove = { from: source, to: target };
+                showPromotionModal();
+                return 'snapback'; // Return piece to allow model selection
+            }
+
+            let move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q'
+            });
+
+            if (move === null) return 'snapback';
+
+            clearHighlights();
+            tappedSourceSquare = null;
+            updateStatusDisplay();
+            setTimeout(makeEngineMove, 350);
+        }
+
+        function onSnapEnd () {
+            board.position(game.fen());
+        }
+
+        // --- MOBILE TOUCH/CLICK DELEGATED EVENT HANDLER ---
+        $(document).on('click', '#board .square-55d63', function() {
+            if (game.game_over()) return;
+            if (game.turn() === 'b') return;
+
+            const square = $(this).attr('data-square');
+            const piece = game.get(square);
+
+            if (tappedSourceSquare === null) {
+                if (piece && piece.color === 'w') {
+                    tappedSourceSquare = square;
+                    clearHighlights();
+                    highlightSquare(square);
+                    const moves = game.moves({ square: square, verbose: true });
+                    highlightDestinations(moves.map(m => m.to));
+                }
+            } else {
+                if (isPromotionMove(tappedSourceSquare, square)) {
+                    pendingPromotionMove = { from: tappedSourceSquare, to: square };
+                    showPromotionModal();
+                    clearHighlights();
+                    tappedSourceSquare = null;
+                    return;
+                }
+
+                let move = game.move({
+                    from: tappedSourceSquare,
+                    to: square,
+                    promotion: 'q'
+                });
+
+                if (move === null) {
+                    if (piece && piece.color === 'w') {
+                        tappedSourceSquare = square;
+                        clearHighlights();
+                        highlightSquare(square);
+                        const moves = game.moves({ square: square, verbose: true });
+                        highlightDestinations(moves.map(m => m.to));
+                    } else {
+                        clearHighlights();
+                        tappedSourceSquare = null;
+                    }
+                } else {
+                    board.position(game.fen());
+                    clearHighlights();
+                    tappedSourceSquare = null;
+                    updateStatusDisplay();
+                    setTimeout(makeEngineMove, 350);
+                }
+            }
+        });
+
+        // --- INDEXED DB PROGRESS PERSISTENCE ---
+        let db;
+        const dbRequest = indexedDB.open("SuperChessGauntletDB", 1);
+        
+        dbRequest.onupgradeneeded = (e) => {
+            db = e.target.result;
+            if(!db.objectStoreNames.contains("games")) {
+                db.createObjectStore("games", { keyPath: "id", autoIncrement: true });
+            }
+            if(!db.objectStoreNames.contains("progress")) {
+                db.createObjectStore("progress", { keyPath: "key" });
+            }
+        };
+
+        dbRequest.onsuccess = (e) => {
+            db = e.target.result;
+            loadProgress();
+            loadSavedGamesList();
+        };
+
+        function saveProgress(level, coins) {
+            if (!db) return;
+            const tx = db.transaction("progress", "readwrite");
+            tx.objectStore("progress").put({ key: "maxLevel", value: level });
+            tx.objectStore("progress").put({ key: "coins", value: coins });
+        }
+
+        function loadProgress() {
+            if (!db) return;
+            const tx = db.transaction("progress", "readonly");
+            
+            tx.objectStore("progress").get("maxLevel").onsuccess = (e) => {
+                if(e.target.result) {
+                    maxUnlockedLevel = e.target.result.value;
+                    document.getElementById('max-level-display').innerText = maxUnlockedLevel;
+                }
+                
+                tx.objectStore("progress").get("coins").onsuccess = (e2) => {
+                    if(e2.target.result) {
+                        coinsCount = e2.target.result.value;
+                        document.getElementById('coin-count').innerText = String(coinsCount).padStart(4, '0');
+                    }
+                    
+                    currentSelectedWorld = Math.min(10, Math.floor((maxUnlockedLevel - 1) / 50) + 1);
+                    if(currentSelectedWorld < 1) currentSelectedWorld = 1;
+                    
+                    renderWorldOverworld();
+                    renderLevelNodes();
+                };
+            };
+        }
+
+        function saveGameToDB(pgn, won) {
+            if (!db) return;
+            const tx = db.transaction("games", "readwrite");
+            tx.objectStore("games").add({
+                date: new Date().toLocaleDateString(),
+                level: currentSelectedLevel,
+                pgn: pgn,
+                result: won ? "Win" : "Loss / Draw"
+            });
+            loadSavedGamesList();
+        }
+
+        function loadSavedGamesList() {
+            if (!db) return;
+            const container = document.getElementById('games-list');
+            container.innerHTML = "";
+            let count = 0;
+
+            db.transaction("games", "readonly").objectStore("games").openCursor(null, "prev").onsuccess = (e) => {
+                const cursor = e.target.result;
+                if(cursor) {
+                    count++;
+                    const item = document.createElement('div');
+                    item.className = "p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center cursor-pointer hover:bg-slate-900 transition-all font-retro text-[8px]";
+                    item.innerHTML = `
+                        <div class="flex flex-col gap-1">
+                            <span>LV. ${cursor.value.level}</span>
+                            <span class="text-slate-500">${cursor.value.date}</span>
+                        </div> 
+                        <span class="px-1.5 py-0.5 rounded ${cursor.value.result === 'Win' ? 'bg-green-950 text-green-400' : 'bg-slate-850 text-amber-500'}">
+                            ${cursor.value.result}
+                        </span>
+                    `;
+                    const pgnStr = cursor.value.pgn;
+                    item.onclick = () => {
+                        game.load_pgn(pgnStr);
+                        board.position(game.fen());
+                        document.getElementById('game-status').innerText = "Loaded level log";
+                        document.getElementById('analyze-btn').removeAttribute('disabled');
+                        showToast(`Restored level log ${cursor.value.level}!`);
+                    };
+                    container.appendChild(item);
+                    cursor.continue();
+                }
+                document.getElementById('saved-count').innerText = count;
+                if(count === 0) {
+                    container.innerHTML = `<p class="text-slate-600 italic text-center py-4 text-[8px]">No stage logs found.</p>`;
+                }
+            };
+        }
+
+        // --- ENGINE CONTROLLER & CALCULATIONS (DEPTH 16) ---
+        function getEngineTimeParams(level) {
+            const ms = Math.min(2000, 50 + (level * 4));
+            const depth = Math.min(16, 2 + Math.floor(level / 33));
+            return { ms, depth };
+        }
+
+        function buildBypassedWorker(url) {
+            const code = `importScripts("${url}");`;
+            const blob = new Blob([code], { type: "application/javascript" });
+            return new Worker(URL.createObjectURL(blob));
+        }
+
+        function initEngine() {
+            if(engineWorker) engineWorker.terminate();
+            try {
+                engineWorker = buildBypassedWorker(STOCKFISH_CDN);
+                engineWorker.postMessage("uci");
+            } catch (e) {
+                showToast("Engine thread failed to spin up. Re-initializing.");
+            }
+        }
+
+        function makeEngineMove() {
+            if (game.game_over()) return;
+            
+            document.getElementById('engine-status').innerText = "CALCULATING (D16)...";
+            const overrideRank = document.getElementById('move-rank-select').value;
+            const params = getEngineTimeParams(currentSelectedLevel);
+
+            engineWorker.postMessage("setoption name MultiPV value 10");
+            engineWorker.postMessage(`position fen ${game.fen()}`);
+            engineWorker.postMessage(`go depth 16 movetime ${params.ms}`);
+
+            let lines = [];
+
+            engineWorker.onmessage = function(event) {
+                const line = event.data;
+                
+                if (line.startsWith("info") && line.includes("multipv")) {
+                    const parts = line.split(" ");
+                    const pvIndex = parts.indexOf("multipv");
+                    const moveIndex = parts.indexOf("pv");
+                    if (pvIndex !== -1 && moveIndex !== -1) {
+                        const rank = parseInt(parts[pvIndex + 1], 10);
+                        const move = parts[moveIndex + 1];
+                        lines[rank - 1] = move;
+                    }
+                }
+
+                if (line.startsWith("bestmove")) {
+                    document.getElementById('engine-status').innerText = "READY";
+                    
+                    let chosenMove = lines[0];
+                    let targetRank = 1;
+
+                    if (overrideRank === "dynamic") {
+                        targetRank = getLevelRuleRank(currentSelectedLevel);
+                    } else {
+                        targetRank = parseInt(overrideRank, 10);
+                    }
+
+                    chosenMove = lines[targetRank - 1] || lines[0] || line.split(" ")[1];
+
+                    if (chosenMove) {
+                        game.move({
+                            from: chosenMove.substring(0, 2),
+                            to: chosenMove.substring(2, 4),
+                            promotion: chosenMove.length === 5 ? chosenMove.charAt(4) : null
+                        });
+                        board.position(game.fen());
+                        updateStatusDisplay();
+                    }
+                }
+            };
+        }
+
+        function updateStatusDisplay() {
+            let status = '';
+
+            if (game.in_checkmate()) {
+                if (game.turn() === 'b') {
+                    status = 'YOU WIN!';
+                    showToast("⭐️ Stage Clear! You beat this challenge!");
+                    coinsCount += 100;
+                    document.getElementById('coin-count').innerText = String(coinsCount).padStart(4, '0');
+                    
+                    if (currentSelectedLevel >= maxUnlockedLevel) {
+                        maxUnlockedLevel = Math.min(500, currentSelectedLevel + 1);
+                        saveProgress(maxUnlockedLevel, coinsCount);
+                        document.getElementById('max-level-display').innerText = maxUnlockedLevel;
+                        renderWorldOverworld();
+                        renderLevelNodes();
+                    }
+                    saveGameToDB(game.pgn(), true);
+                } else {
+                    status = 'YOU LOST!';
+                    showToast("💀 Defeat! Try restarting the stage.");
+                    saveGameToDB(game.pgn(), false);
+                }
+            } else if (game.in_draw()) {
+                status = 'DRAW MATCH!';
+                showToast("🤝 Friendly Draw!");
+                saveGameToDB(game.pgn(), false);
+            } else {
+                status = game.turn() === 'w' ? "YOUR TURN" : "ENEMY TURN...";
+            }
+
+            document.getElementById('game-status').innerText = status;
+            document.getElementById('analyze-btn').removeAttribute('disabled');
+        }
+
+        // --- ENHANCED MOVE ANALYSIS ENGINE (CHESS.COM STYLE DEPTH 16) ---
+        document.getElementById('analyze-btn').onclick = () => {
+            const pgnHistory = game.history({ verbose: true });
+            if (pgnHistory.length === 0) {
+                showToast("Play some moves before analyzing!");
+                return;
+            }
+
+            const analysisBox = document.getElementById('analysis-box');
+            
+            // Render beautiful analytical progress state loader with progress bar
+            analysisBox.innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center text-center p-4 space-y-4 font-retro">
+                    <div class="w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+                    <div class="space-y-1">
+                        <p class="text-yellow-400 text-[8px]" id="analysis-step-tracker">STARTING EVALUATION...</p>
+                        <p class="text-slate-500 text-[6px]">Stockfish MultiPV Engine - Depth 16</p>
+                    </div>
+                    <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                        <div id="analysis-progress-bar" class="bg-yellow-500 h-full rounded-full transition-all duration-300" style="width: 0%;"></div>
+                    </div>
+                </div>
+            `;
+            
+            if(analysisWorker) analysisWorker.terminate();
+            analysisWorker = buildBypassedWorker(STOCKFISH_CDN);
+            
+            let currentMoveIdx = 0;
+            let evaluations = [];
+            let virtualGame = new Chess();
+            let lastScore = 0.30; // base advantage reference
+
+            function analyzeNext() {
+                if (currentMoveIdx >= pgnHistory.length) {
+                    renderAnalysisList(pgnHistory, evaluations);
+                    return;
+                }
+                
+                // Update Step Tracker Text and Progress Bar Width
+                const progressText = document.getElementById('analysis-step-tracker');
+                const progressBar = document.getElementById('analysis-progress-bar');
+                const percentage = Math.round((currentMoveIdx / pgnHistory.length) * 100);
+
+                if (progressText) {
+                    progressText.innerText = `MOVE ${currentMoveIdx + 1} / ${pgnHistory.length} (${percentage}%)`;
+                }
+                if (progressBar) {
+                    progressBar.style.width = `${percentage}%`;
+                }
+
+                virtualGame.move(pgnHistory[currentMoveIdx]);
+                analysisWorker.postMessage(`position fen ${virtualGame.fen()}`);
+                analysisWorker.postMessage("go depth 16");
+
+                // Temporary variable to track evaluations sent on active moves
+                let activeMoveScore = { type: 'cp', value: lastScore };
+
+                analysisWorker.onmessage = function(e) {
+                    const msg = e.data;
+                    
+                    // Robust parser tracks score from any evaluation depths received, never stalls
+                    if (msg.startsWith("info") && msg.includes("score")) {
+                        const parts = msg.split(" ");
+                        const scoreIdx = parts.indexOf("score");
+                        if (scoreIdx !== -1) {
+                            const scoreType = parts[scoreIdx + 1]; // 'cp' or 'mate'
+                            let scoreVal = parseInt(parts[scoreIdx + 2], 10);
+                            
+                            if (!isNaN(scoreVal)) {
+                                if (virtualGame.turn() === 'b') scoreVal = -scoreVal;
+                                activeMoveScore = { 
+                                    type: scoreType, 
+                                    value: scoreVal / 100 
+                                };
+                            }
+                        }
+                    }
+
+                    if (msg.startsWith("bestmove")) {
+                        // Store the absolute latest calculated score prior to final bestmove output
+                        evaluations[currentMoveIdx] = activeMoveScore;
+                        lastScore = activeMoveScore.value; // set up next comparison
+                        currentMoveIdx++;
+                        analyzeNext();
+                    }
+                };
+            }
+
+            analyzeNext();
+        };
+
+        function renderAnalysisList(moves, evals) {
+            const container = document.getElementById('analysis-box');
+            container.innerHTML = "";
+            
+            let html = `<div class="space-y-2">`;
+            let lastScore = 0.30;
+
+            // Scorecard counters
+            let stats = {
+                w: { brilliant: 0, great: 0, best: 0, mistake: 0 },
+                b: { brilliant: 0, great: 0, best: 0, mistake: 0 }
+            };
+
+            for(let i = 0; i < moves.length; i++) {
+                let currentScore = evals[i] ? (evals[i].type === 'cp' ? evals[i].value : (evals[i].value > 0 ? 15 : -15)) : lastScore;
+                
+                let delta = currentScore - lastScore;
+                if (i % 2 === 1) delta = -delta; 
+
+                let badgeColor = "bg-emerald-950 text-emerald-400 border-emerald-800";
+                let label = "Best Move";
+                const isWhite = (i % 2 === 0);
+                const activeStats = isWhite ? stats.w : stats.b;
+
+                // Move classifications
+                if (i < 6 && delta >= -0.15) {
+                    label = "Book Move";
+                    badgeColor = "bg-slate-800 text-slate-300 border-slate-600";
+                    activeStats.best++;
+                } else if (delta >= 0.40) {
+                    label = "Brilliant !!";
+                    badgeColor = "bg-indigo-950 text-indigo-300 border-indigo-500 font-bold";
+                    activeStats.brilliant++;
+                } else if (delta >= 0.15 && delta < 0.40) {
+                    label = "Great Move !";
+                    badgeColor = "bg-cyan-950 text-cyan-300 border-cyan-500";
+                    activeStats.great++;
+                } else if (delta >= -0.05 && delta < 0.15) {
+                    label = "Best Move";
+                    badgeColor = "bg-emerald-950 text-emerald-400 border-emerald-600";
+                    activeStats.best++;
+                } else if (delta >= -0.18 && delta < -0.05) {
+                    label = "Excellent";
+                    badgeColor = "bg-green-950 text-green-300 border-green-700";
+                    activeStats.best++;
+                } else if (delta >= -0.38 && delta < -0.18) {
+                    label = "Good Move";
+                    badgeColor = "bg-slate-900 text-slate-300 border-slate-700";
+                } else if (delta >= -0.75 && delta < -0.38) {
+                    label = "Inaccuracy ?";
+                    badgeColor = "bg-yellow-950 text-yellow-400 border-yellow-800";
+                } else if (delta >= -1.60 && delta < -0.75) {
+                    label = "Mistake ?!";
+                    badgeColor = "bg-orange-950 text-orange-400 border-orange-850";
+                    activeStats.mistake++;
+                } else {
+                    label = "Blunder ??";
+                    badgeColor = "bg-red-950 text-red-400 border-red-900 font-bold";
+                    activeStats.mistake++;
+                }
+
+                const playerLabel = isWhite ? 'White' : 'Black';
+                html += `
+                    <div class="p-2 bg-slate-900/60 rounded-xl border border-slate-800 flex justify-between items-center font-retro text-[8px]">
+                        <div class="flex flex-col gap-1">
+                            <span class="font-bold text-slate-300">${i + 1}. ${playerLabel}: ${moves[i].san}</span>
+                            <span class="text-slate-500 text-[7px]">Eval: ${currentScore > 0 ? '+' : ''}${currentScore.toFixed(2)} (${delta >= 0 ? '+' : ''}${delta.toFixed(2)})</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full border ${badgeColor}">
+                            ${label}
+                        </span>
+                    </div>
+                `;
+                lastScore = currentScore;
+            }
+
+            container.innerHTML = html + "</div>";
+
+            // Update Side-by-side Scorecard Display
+            document.getElementById('w-stat-brilliant').innerText = stats.w.brilliant;
+            document.getElementById('w-stat-great').innerText = stats.w.great;
+            document.getElementById('w-stat-best').innerText = stats.w.best;
+            document.getElementById('w-stat-mistake').innerText = stats.w.mistake;
+
+            document.getElementById('b-stat-brilliant').innerText = stats.b.brilliant;
+            document.getElementById('b-stat-great').innerText = stats.b.great;
+            document.getElementById('b-stat-best').innerText = stats.b.best;
+            document.getElementById('b-stat-mistake').innerText = stats.b.mistake;
+
+            document.getElementById('analysis-summary-card').classList.remove('hidden');
+
+            // Update Advantage Progress Bar Visuals
+            const latestEval = evals[evals.length - 1] ? evals[evals.length - 1].value : 0;
+            document.getElementById('eval-metric-text').innerText = (latestEval > 0 ? '+' : '') + latestEval.toFixed(2);
+            
+            let percentage = 50 + (latestEval * 10);
+            percentage = Math.max(5, Math.min(95, percentage));
+            
+            document.getElementById('white-eval-bar').style.width = `${percentage}%`;
+            document.getElementById('black-eval-bar').style.width = `${100 - percentage}%`;
+        }
+
+        // --- STAGE BUTTON CLICK EVENTS ---
+        document.getElementById('start-btn').onclick = () => {
+            game.reset();
+            if (board) {
+                board.position('start');
+            }
+            clearHighlights();
+            tappedSourceSquare = null;
+            pendingPromotionMove = null;
+            hidePromotionModal();
+            document.getElementById('game-status').innerText = "YOUR TURN";
+            document.getElementById('analyze-btn').setAttribute('disabled', 'true');
+            document.getElementById('eval-metric-text').innerText = "0.00";
+            document.getElementById('white-eval-bar').style.width = "50%";
+            document.getElementById('black-eval-bar').style.width = "50%";
+            document.getElementById('analysis-summary-card').classList.add('hidden');
+            document.getElementById('analysis-box').innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center text-center p-4">
+                    <span class="text-3xl mb-2">📋</span>
+                    <p class="text-[9px] text-slate-400">Awaiting Battle Moves</p>
+                    <p class="text-slate-500 text-[8px] mt-2 leading-relaxed">Once you make your moves, run the evaluation engine here.</p>
+                </div>
+            `;
+            initEngine();
+            showToast("Stage Reset! Ready for battle.");
+        };
+
+        // --- SYNCHRONOUS PRE-INITIALIZATION GUARD ---
+        function initialSyncLoad() {
+            renderWorldOverworld();
+            renderLevelNodes();
+            
+            // Build the initial Chessboard.js configuration
+            const boardConfig = {
+                draggable: true,
+                position: 'start',
+                onDragStart: onDragStart,
+                onDrop: onDrop,
+                onSnapEnd: onSnapEnd,
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+            };
+            board = ChessBoard('board', boardConfig);
+        }
+
+        window.addEventListener('resize', () => {
+            if (board) board.resize();
+        });
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            initialSyncLoad();
+            initEngine();
+        });
+    </script>
+</body>
+</html>
