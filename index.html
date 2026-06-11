@@ -82,6 +82,37 @@
         <button onclick="hideToast()" class="text-slate-950 hover:text-white font-bold text-lg ml-2">&times;</button>
     </div>
 
+    <!-- Retro Modals for Export/Import Save Codes -->
+    <div id="save-code-modal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-900 border-4 border-yellow-500 p-6 rounded-2xl w-full max-w-lg shadow-2xl font-retro text-left">
+            <div class="flex justify-between items-center mb-4">
+                <span id="modal-title" class="text-yellow-400 text-xs">SAVE CODE SYSTEM</span>
+                <button onclick="closeSaveCodeModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="flex gap-2 border-b-2 border-slate-800 pb-2">
+                    <button id="tab-export-btn" class="text-[9px] px-3 py-1.5 bg-yellow-500 text-slate-950 rounded">EXPORT CODE</button>
+                    <button id="tab-import-btn" class="text-[9px] px-3 py-1.5 bg-slate-800 text-slate-300 rounded">IMPORT CODE</button>
+                </div>
+
+                <!-- Export Section -->
+                <div id="export-section" class="space-y-2">
+                    <label class="block text-[8px] text-slate-400">YOUR TRANSFER SAVE CODE:</label>
+                    <textarea id="export-code-area" readonly class="w-full h-32 bg-slate-950 border border-slate-800 rounded p-2 text-[7px] text-indigo-400 font-mono break-all focus:outline-none"></textarea>
+                    <button onclick="copySaveCode()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 text-[9px] rounded">COPY CODE TO CLIPBOARD</button>
+                </div>
+
+                <!-- Import Section -->
+                <div id="import-section" class="hidden space-y-2">
+                    <label class="block text-[8px] text-slate-400">PASTE SAVE CODE HERE:</label>
+                    <textarea id="import-code-area" placeholder="Paste your alphanumeric save code here..." class="w-full h-32 bg-slate-950 border border-slate-800 rounded p-2 text-[7px] text-yellow-400 font-mono break-all focus:outline-none focus:border-yellow-500"></textarea>
+                    <button onclick="submitImportSaveCode()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 text-[9px] rounded">CONFIRM PROGRESS RESTORE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Container -->
     <main class="flex-1 container mx-auto p-4 max-w-7xl flex flex-col">
         
@@ -214,13 +245,18 @@
                         <span id="saved-count" class="bg-slate-950 text-indigo-400 px-2 py-0.5 rounded text-[8px]">0</span>
                     </h3>
                     
-                    <!-- Backup & Transfers block -->
-                    <div class="grid grid-cols-2 gap-2 pb-2">
-                        <button id="export-save-btn" class="py-2 px-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded-lg text-[7px] text-slate-300 font-retro transition active:scale-95">
-                            📤 EXPORT
-                        </button>
-                        <button id="import-save-btn" class="py-2 px-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded-lg text-[7px] text-slate-300 font-retro transition active:scale-95">
-                            📥 IMPORT
+                    <!-- Backup & Transfers block with copy/paste Save Code support -->
+                    <div class="flex flex-col gap-2 pb-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="export-save-btn" class="py-2 px-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded-lg text-[7px] text-slate-300 font-retro transition active:scale-95">
+                                📤 EXPORT JSON
+                            </button>
+                            <button id="import-save-btn" class="py-2 px-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded-lg text-[7px] text-slate-300 font-retro transition active:scale-95">
+                                📥 IMPORT JSON
+                            </button>
+                        </div>
+                        <button onclick="openSaveCodeModal()" class="w-full py-2 px-1.5 bg-indigo-950 hover:bg-indigo-900 border border-indigo-700 rounded-lg text-[7px] text-yellow-400 font-retro transition active:scale-95">
+                            🔑 SAVE CODES (COPY & PASTE)
                         </button>
                         <input type="file" id="import-file-input" class="hidden" accept=".json">
                     </div>
@@ -283,7 +319,7 @@
                     
                     <div class="flex justify-between items-center pb-3 border-b border-slate-800">
                         <h2 class="text-[9px] text-slate-200">
-                            📊 EVALUATION (D16)
+                            📊 REAL EVALUATION (D16)
                         </h2>
                         <button id="analyze-btn" disabled 
                             class="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white text-[8px] px-3 py-2 rounded-lg transition-all shadow-md">
@@ -428,6 +464,111 @@
         function hideToast() {
             const toast = document.getElementById('toast-notification');
             toast.style.transform = "translateY(-150%)";
+        }
+
+        // --- RETRO SAVE CODE MODAL (EXPORT / IMPORT) ---
+        function openSaveCodeModal() {
+            document.getElementById('save-code-modal').classList.remove('hidden');
+            // Trigger auto export compilation
+            triggerSaveCodeExport();
+        }
+
+        function closeSaveCodeModal() {
+            document.getElementById('save-code-modal').classList.add('hidden');
+        }
+
+        // Tab selection logic
+        document.getElementById('tab-export-btn').onclick = () => {
+            document.getElementById('tab-export-btn').className = "text-[9px] px-3 py-1.5 bg-yellow-500 text-slate-950 rounded";
+            document.getElementById('tab-import-btn').className = "text-[9px] px-3 py-1.5 bg-slate-800 text-slate-300 rounded";
+            document.getElementById('export-section').classList.remove('hidden');
+            document.getElementById('import-section').classList.add('hidden');
+            triggerSaveCodeExport();
+        };
+
+        document.getElementById('tab-import-btn').onclick = () => {
+            document.getElementById('tab-export-btn').className = "text-[9px] px-3 py-1.5 bg-slate-800 text-slate-300 rounded";
+            document.getElementById('tab-import-btn').className = "text-[9px] px-3 py-1.5 bg-yellow-500 text-slate-950 rounded";
+            document.getElementById('export-section').classList.add('hidden');
+            document.getElementById('import-section').classList.remove('hidden');
+        };
+
+        function triggerSaveCodeExport() {
+            if (!db) return;
+            const tx = db.transaction(["progress", "games"], "readonly");
+            let progressData = [];
+            let gamesData = [];
+
+            tx.objectStore("progress").getAll().onsuccess = (e) => {
+                progressData = e.target.result;
+            };
+
+            tx.objectStore("games").getAll().onsuccess = (e) => {
+                gamesData = e.target.result;
+                
+                setTimeout(() => {
+                    const bundle = {
+                        version: "1.0",
+                        exportDate: new Date().toISOString(),
+                        progress: progressData,
+                        games: gamesData
+                    };
+                    const jsonStr = JSON.stringify(bundle);
+                    // Safe unicode base64 encoding to support all characters gracefully
+                    const base64Code = btoa(unescape(encodeURIComponent(jsonStr)));
+                    document.getElementById('export-code-area').value = base64Code;
+                }, 100);
+            };
+        }
+
+        function copySaveCode() {
+            const copyText = document.getElementById("export-code-area");
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); // mobile support
+            
+            try {
+                document.execCommand("copy");
+                showToast("Save Code copied to clipboard!");
+            } catch (err) {
+                showToast("Failed to copy. Please manually select and copy the text.");
+            }
+        }
+
+        function submitImportSaveCode() {
+            const rawCode = document.getElementById('import-code-area').value.trim();
+            if (!rawCode) {
+                showToast("Please paste a valid save code.");
+                return;
+            }
+
+            try {
+                const jsonStr = decodeURIComponent(escape(atob(rawCode)));
+                const bundle = JSON.parse(jsonStr);
+                
+                if (!bundle.progress || !bundle.games) {
+                    throw new Error("Invalid Save Code Data");
+                }
+
+                const tx = db.transaction(["progress", "games"], "readwrite");
+                tx.objectStore("progress").clear();
+                tx.objectStore("games").clear();
+
+                bundle.progress.forEach(p => tx.objectStore("progress").put(p));
+                bundle.games.forEach(g => {
+                    delete g.id; // clear index for auto incrementing
+                    tx.objectStore("games").add(g);
+                });
+
+                tx.oncomplete = () => {
+                    showToast("Save Code applied successfully! Reloading...");
+                    closeSaveCodeModal();
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1200);
+                };
+            } catch (err) {
+                showToast("Corrupt Save Code. Please verify and paste again.");
+            }
         }
 
         // --- MAP GENERATOR (MARIO STYLE) ---
@@ -987,7 +1128,7 @@
                 }
             } else if (game.in_draw()) {
                 status = 'DRAW MATCH!';
-                showToast("🤝 Friendly Draw!");
+                showToast("🤝 Friendly Draw! Retry stage to progress!");
                 saveGameToDB(game.pgn(), false);
             } else {
                 status = game.turn() === 'w' ? "YOUR TURN" : "ENEMY TURN...";
@@ -997,7 +1138,7 @@
             document.getElementById('analyze-btn').removeAttribute('disabled');
         }
 
-        // --- CONCURRENT WORKER ANALYZERS HUB (RUN MULTIPLE BACKGROUND THREADS) ---
+        // --- REAL CONCURRENT WORKER ANALYZERS HUB (RUN MULTIPLE BACKGROUND THREADS) ---
         function renderJobsCarousel() {
             const container = document.getElementById('jobs-carousel');
             if (activeAnalysisJobs.length === 0) {
@@ -1046,7 +1187,7 @@
                         <div class="w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
                         <div class="space-y-1">
                             <p class="text-yellow-400 text-[8px]">ANALYSIS LIVE IN BACKGROUND...</p>
-                            <p class="text-slate-500 text-[6px]">Evaluating Move ${job.currentIndex + 1} of ${job.moves.length} (${job.progress}%)</p>
+                            <p class="text-slate-500 text-[6px]">Evaluating Move ${job.currentIndex} of ${job.moves.length} (${job.progress}%)</p>
                         </div>
                         <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800 p-0.5">
                             <div class="bg-yellow-500 h-full rounded-full transition-all duration-300" style="width: ${job.progress}%;"></div>
@@ -1066,25 +1207,34 @@
             const evals = job.evaluations;
 
             let html = `<div class="space-y-2">`;
-            let lastScore = 0.30;
+            
+            // Baseline starting evaluation score (using the starting position)
+            let lastScore = evals[0] ? evals[0].value : 0.30;
 
             let stats = {
                 w: { brilliant: 0, great: 0, best: 0, mistake: 0 },
                 b: { brilliant: 0, great: 0, best: 0, mistake: 0 }
             };
 
-            for(let i = 0; i < moves.length; i++) {
+            // Calculate change metric based on standard chess rules starting from index 1 (after move 1)
+            for(let i = 1; i < evals.length; i++) {
+                const moveIdxInGame = i - 1; // alignment with move history array
+                const moveObj = moves[moveIdxInGame];
+                if (!moveObj) continue;
+
                 let currentScore = evals[i] ? (evals[i].type === 'cp' ? evals[i].value : (evals[i].value > 0 ? 15 : -15)) : lastScore;
+                
+                // delta is the change in score from the active player's perspective
                 let delta = currentScore - lastScore;
-                if (i % 2 === 1) delta = -delta; 
+                if (moveIdxInGame % 2 === 1) delta = -delta; // Black turn inversion
 
                 let badgeColor = "bg-emerald-950 text-emerald-400 border-emerald-800";
                 let label = "Best Move";
-                const isWhite = (i % 2 === 0);
+                const isWhite = (moveIdxInGame % 2 === 0);
                 const activeStats = isWhite ? stats.w : stats.b;
 
-                // Move classifications
-                if (i < 6 && delta >= -0.15) {
+                // Professional chess.com score categorizations
+                if (moveIdxInGame < 6 && delta >= -0.15) {
                     label = "Book Move";
                     badgeColor = "bg-slate-800 text-slate-300 border-slate-600";
                     activeStats.best++;
@@ -1122,9 +1272,9 @@
 
                 const playerLabel = isWhite ? 'White' : 'Black';
                 html += `
-                    <div class="p-2 bg-slate-900/60 rounded-xl border border-slate-800 flex justify-between items-center font-retro text-[8px] hover:bg-slate-900 transition cursor-pointer" onclick="board.position('${moves[i].fen || moves[i].after}')">
+                    <div class="p-2 bg-slate-900/60 rounded-xl border border-slate-800 flex justify-between items-center font-retro text-[8px] hover:bg-slate-900 transition cursor-pointer" onclick="board.position('${moveObj.fen || moveObj.after}')">
                         <div class="flex flex-col gap-1">
-                            <span class="font-bold text-slate-300">${i + 1}. ${playerLabel}: ${moves[i].san}</span>
+                            <span class="font-bold text-slate-300">${moveIdxInGame + 1}. ${playerLabel}: ${moveObj.san}</span>
                             <span class="text-slate-500 text-[7px]">Eval: ${currentScore > 0 ? '+' : ''}${currentScore.toFixed(2)} (${delta >= 0 ? '+' : ''}${delta.toFixed(2)})</span>
                         </div>
                         <span class="px-2 py-0.5 rounded-full border ${badgeColor}">
@@ -1168,6 +1318,12 @@
                 return;
             }
 
+            // Compile the complete sequence of positions to evaluate starting from standard opening FEN
+            const positionsToEvaluate = ["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"];
+            movesList.forEach(m => {
+                positionsToEvaluate.push(m.fen || m.after);
+            });
+
             // Create a completely new Analysis Job object in the array
             const jobId = Date.now();
             const job = {
@@ -1175,6 +1331,7 @@
                 level: currentSelectedLevel,
                 date: new Date().toLocaleDateString(),
                 moves: movesList,
+                positions: positionsToEvaluate,
                 evaluations: [],
                 status: "running",
                 progress: 0,
@@ -1194,7 +1351,7 @@
             job.worker.postMessage("uci");
 
             function runWorkerStep() {
-                if (job.currentIndex >= job.moves.length) {
+                if (job.currentIndex >= job.positions.length) {
                     // Job finished! Update details and terminate this job's worker
                     job.status = "completed";
                     job.progress = 100;
@@ -1209,8 +1366,7 @@
                 }
 
                 // Push position to evaluate
-                const moveState = job.moves[job.currentIndex];
-                const targetFen = moveState.fen || moveState.after;
+                const targetFen = job.positions[job.currentIndex];
 
                 job.worker.postMessage(`position fen ${targetFen}`);
                 job.worker.postMessage("go depth 16");
@@ -1228,8 +1384,11 @@
                             let scoreVal = parseInt(parts[scoreIdx + 2], 10);
                             
                             if (!isNaN(scoreVal)) {
-                                // Black inversion alignment
-                                if ((job.currentIndex % 2 === 1)) scoreVal = -scoreVal;
+                                // Turn inversion check: if turn index corresponds to black
+                                // We check whose turn it was to calculate correct polarity
+                                if (job.currentIndex > 0 && ((job.currentIndex - 1) % 2 === 1)) {
+                                    scoreVal = -scoreVal;
+                                }
                                 activeStepScore = { 
                                     type: scoreType, 
                                     value: scoreVal / 100 
@@ -1244,7 +1403,7 @@
 
                         // Increment step progress
                         job.currentIndex++;
-                        job.progress = Math.round((job.currentIndex / job.moves.length) * 100);
+                        job.progress = Math.round((job.currentIndex / job.positions.length) * 100);
                         
                         renderJobsCarousel();
                         if (selectedJobId === job.id) {
