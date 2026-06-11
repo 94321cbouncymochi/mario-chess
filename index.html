@@ -213,7 +213,19 @@
                         <span>💾 STAGE LOGS</span>
                         <span id="saved-count" class="bg-slate-950 text-indigo-400 px-2 py-0.5 rounded text-[8px]">0</span>
                     </h3>
-                    <div id="games-list" class="space-y-2 max-h-40 overflow-y-auto pr-1 text-xs">
+                    
+                    <!-- Backup & Transfers block -->
+                    <div class="grid grid-cols-2 gap-2 pb-2">
+                        <button id="export-save-btn" class="py-2 px-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded-lg text-[7px] text-slate-300 font-retro transition active:scale-95">
+                            📤 EXPORT
+                        </button>
+                        <button id="import-save-btn" class="py-2 px-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded-lg text-[7px] text-slate-300 font-retro transition active:scale-95">
+                            📥 IMPORT
+                        </button>
+                        <input type="file" id="import-file-input" class="hidden" accept=".json">
+                    </div>
+
+                    <div id="games-list" class="space-y-2 max-h-36 overflow-y-auto pr-1 text-xs">
                         <!-- Dynamically filled -->
                     </div>
                 </div>
@@ -279,8 +291,17 @@
                         </button>
                     </div>
 
+                    <!-- BACKGROUND ANALYSIS JOBS HUB -->
+                    <div class="my-3 border-b border-slate-800 pb-3">
+                        <div class="text-[7px] text-slate-400 uppercase tracking-wider mb-2">Background Analysis Threads</div>
+                        <div id="jobs-carousel" class="flex gap-2 overflow-x-auto pb-1 max-w-full">
+                            <!-- Populated with background threads -->
+                            <div class="text-[7px] text-slate-600 italic">No background tasks yet. Play and click Analyze!</div>
+                        </div>
+                    </div>
+
                     <!-- Advantage Metric Tracker -->
-                    <div class="my-4">
+                    <div class="my-2">
                         <div class="text-[8px] text-slate-400 mb-2 flex justify-between">
                             <span>ADVANTAGE METER</span>
                             <span id="eval-metric-text" class="text-indigo-400">0.00</span>
@@ -342,7 +363,10 @@
         let game = new Chess();
         let board = null;
         let engineWorker = null;
-        let analysisWorker = null;
+        
+        // Background concurrent analysis job lists
+        let activeAnalysisJobs = [];
+        let selectedJobId = null;
         
         // Progress State
         let maxUnlockedLevel = 1;
@@ -531,16 +555,13 @@
             destinations.forEach(square => {
                 const targetPiece = game.get(square);
                 if (targetPiece) {
-                    // Highlights with red border and overlay for captures
                     $('#board .square-' + square).addClass('highlight-capture');
                 } else {
-                    // Standard helper target dots
                     $('#board .square-' + square).addClass('highlight-destination');
                 }
             });
         }
 
-        // Helper to check if a pawn movement represents a promotion
         function isPromotionMove(source, target) {
             const piece = game.get(source);
             if (piece && piece.type === 'p') {
@@ -561,7 +582,6 @@
             document.getElementById('promotion-modal').classList.add('hidden');
         }
 
-        // Globally accessible selectPromotion method
         window.selectPromotion = function(pieceCode) {
             if (pendingPromotionMove) {
                 game.move({
@@ -594,7 +614,7 @@
             if (isPromotionMove(source, target)) {
                 pendingPromotionMove = { from: source, to: target };
                 showPromotionModal();
-                return 'snapback'; // Return piece to allow model selection
+                return 'snapback';
             }
 
             let move = game.move({
@@ -615,7 +635,7 @@
             board.position(game.fen());
         }
 
-        // --- MOBILE TOUCH/CLICK DELEGATED EVENT HANDLER ---
+        // --- MOBILE TOUCH/CLICK EVENT HANDLER ---
         $(document).on('click', '#board .square-55d63', function() {
             if (game.game_over()) return;
             if (game.turn() === 'b') return;
@@ -722,10 +742,23 @@
         function saveGameToDB(pgn, won) {
             if (!db) return;
             const tx = db.transaction("games", "readwrite");
+            
+            // Extract complete array of move sequences and intermediate states
+            const movesSequence = game.history({ verbose: true }).map(m => ({
+                from: m.from,
+                to: m.to,
+                san: m.san,
+                color: m.color,
+                piece: m.piece,
+                flags: m.flags,
+                fen: m.after
+            }));
+
             tx.objectStore("games").add({
                 date: new Date().toLocaleDateString(),
                 level: currentSelectedLevel,
                 pgn: pgn,
+                moves: movesSequence,
                 result: won ? "Win" : "Loss / Draw"
             });
             loadSavedGamesList();
@@ -769,6 +802,88 @@
                 }
             };
         }
+
+        // --- SAVE TRANSFER ENGINE (JSON EXPORT/IMPORT) ---
+        document.getElementById('export-save-btn').onclick = () => {
+            if (!db) return;
+            const tx = db.transaction(["progress", "games"], "readonly");
+            let progressData = [];
+            let gamesData = [];
+
+            tx.objectStore("progress").getAll().onsuccess = (e) => {
+                progressData = e.target.result;
+            };
+
+            tx.objectStore("games").getAll().onsuccess = (e) => {
+                gamesData = e.target.result;
+                
+                // Construct the JSON transport file once all items have been fetched from both stores
+                setTimeout(() => {
+                    const bundle = {
+                        version: "1.0",
+                        exportDate: new Date().toISOString(),
+                        progress: progressData,
+                        games: gamesData
+                    };
+
+                    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = `chess_gauntlet_save_${new Date().toISOString().slice(0,10)}.json`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    showToast("Save file exported!");
+                }, 100);
+            };
+        };
+
+        document.getElementById('import-save-btn').onclick = () => {
+            document.getElementById('import-file-input').click();
+        };
+
+        document.getElementById('import-file-input').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const bundle = JSON.parse(event.target.result);
+                    if (!bundle.progress || !bundle.games) {
+                        throw new Error("Invalid Save Data Format");
+                    }
+
+                    // Populate database stores
+                    const tx = db.transaction(["progress", "games"], "readwrite");
+                    
+                    // Clear existing progress/games
+                    tx.objectStore("progress").clear();
+                    tx.objectStore("games").clear();
+
+                    bundle.progress.forEach(p => {
+                        tx.objectStore("progress").put(p);
+                    });
+
+                    bundle.games.forEach(g => {
+                        // Avoid key conflicts by deleting imported auto-increment index
+                        delete g.id;
+                        tx.objectStore("games").add(g);
+                    });
+
+                    tx.oncomplete = () => {
+                        showToast("Progress imported! Reloading overworld...");
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    };
+
+                } catch (err) {
+                    showToast("Failed to parse file. Ensure it is a valid Chess Gauntlet JSON save.");
+                }
+            };
+            reader.readAsText(file);
+        };
 
         // --- ENGINE CONTROLLER & CALCULATIONS (DEPTH 16) ---
         function getEngineTimeParams(level) {
@@ -882,105 +997,77 @@
             document.getElementById('analyze-btn').removeAttribute('disabled');
         }
 
-        // --- ENHANCED MOVE ANALYSIS ENGINE (CHESS.COM STYLE DEPTH 16) ---
-        document.getElementById('analyze-btn').onclick = () => {
-            const pgnHistory = game.history({ verbose: true });
-            if (pgnHistory.length === 0) {
-                showToast("Play some moves before analyzing!");
+        // --- CONCURRENT WORKER ANALYZERS HUB (RUN MULTIPLE BACKGROUND THREADS) ---
+        function renderJobsCarousel() {
+            const container = document.getElementById('jobs-carousel');
+            if (activeAnalysisJobs.length === 0) {
+                container.innerHTML = `<div class="text-[7px] text-slate-600 italic">No background tasks yet. Play and click Analyze!</div>`;
                 return;
             }
 
+            container.innerHTML = "";
+            activeAnalysisJobs.forEach(job => {
+                const btn = document.createElement('button');
+                const isSelected = selectedJobId === job.id;
+                
+                let baseClasses = "flex-shrink-0 px-2.5 py-1.5 rounded-lg border text-[7px] text-left transition-all cursor-pointer ";
+                if (isSelected) {
+                    baseClasses += "bg-indigo-950 border-indigo-500 text-indigo-300 ring-1 ring-indigo-500";
+                } else if (job.status === "completed") {
+                    baseClasses += "bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700";
+                } else {
+                    baseClasses += "bg-yellow-950/40 border-yellow-800 text-yellow-500 hover:border-yellow-700 animate-pulse";
+                }
+
+                btn.className = baseClasses;
+                const pct = job.progress;
+                
+                btn.innerHTML = `
+                    <div class="font-bold">Job Lv.${job.level}</div>
+                    <div class="text-[6px] text-slate-500">${job.status === 'completed' ? 'Done' : 'Prog: ' + pct + '%'}</div>
+                `;
+
+                btn.onclick = () => {
+                    selectedJobId = job.id;
+                    renderJobsCarousel();
+                    renderJobEvaluationView(job);
+                };
+
+                container.appendChild(btn);
+            });
+        }
+
+        function renderJobEvaluationView(job) {
             const analysisBox = document.getElementById('analysis-box');
             
-            // Render beautiful analytical progress state loader with progress bar
-            analysisBox.innerHTML = `
-                <div class="h-full flex flex-col items-center justify-center text-center p-4 space-y-4 font-retro">
-                    <div class="w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
-                    <div class="space-y-1">
-                        <p class="text-yellow-400 text-[8px]" id="analysis-step-tracker">STARTING EVALUATION...</p>
-                        <p class="text-slate-500 text-[6px]">Stockfish MultiPV Engine - Depth 16</p>
+            if (job.status === "running") {
+                analysisBox.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-center p-4 space-y-4 font-retro">
+                        <div class="w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div class="space-y-1">
+                            <p class="text-yellow-400 text-[8px]">ANALYSIS LIVE IN BACKGROUND...</p>
+                            <p class="text-slate-500 text-[6px]">Evaluating Move ${job.currentIndex + 1} of ${job.moves.length} (${job.progress}%)</p>
+                        </div>
+                        <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                            <div class="bg-yellow-500 h-full rounded-full transition-all duration-300" style="width: ${job.progress}%;"></div>
+                        </div>
                     </div>
-                    <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800 p-0.5">
-                        <div id="analysis-progress-bar" class="bg-yellow-500 h-full rounded-full transition-all duration-300" style="width: 0%;"></div>
-                    </div>
-                </div>
-            `;
-            
-            if(analysisWorker) analysisWorker.terminate();
-            analysisWorker = buildBypassedWorker(STOCKFISH_CDN);
-            
-            let currentMoveIdx = 0;
-            let evaluations = [];
-            let virtualGame = new Chess();
-            let lastScore = 0.30; // base advantage reference
-
-            function analyzeNext() {
-                if (currentMoveIdx >= pgnHistory.length) {
-                    renderAnalysisList(pgnHistory, evaluations);
-                    return;
-                }
-                
-                // Update Step Tracker Text and Progress Bar Width
-                const progressText = document.getElementById('analysis-step-tracker');
-                const progressBar = document.getElementById('analysis-progress-bar');
-                const percentage = Math.round((currentMoveIdx / pgnHistory.length) * 100);
-
-                if (progressText) {
-                    progressText.innerText = `MOVE ${currentMoveIdx + 1} / ${pgnHistory.length} (${percentage}%)`;
-                }
-                if (progressBar) {
-                    progressBar.style.width = `${percentage}%`;
-                }
-
-                virtualGame.move(pgnHistory[currentMoveIdx]);
-                analysisWorker.postMessage(`position fen ${virtualGame.fen()}`);
-                analysisWorker.postMessage("go depth 16");
-
-                // Temporary variable to track evaluations sent on active moves
-                let activeMoveScore = { type: 'cp', value: lastScore };
-
-                analysisWorker.onmessage = function(e) {
-                    const msg = e.data;
-                    
-                    // Robust parser tracks score from any evaluation depths received, never stalls
-                    if (msg.startsWith("info") && msg.includes("score")) {
-                        const parts = msg.split(" ");
-                        const scoreIdx = parts.indexOf("score");
-                        if (scoreIdx !== -1) {
-                            const scoreType = parts[scoreIdx + 1]; // 'cp' or 'mate'
-                            let scoreVal = parseInt(parts[scoreIdx + 2], 10);
-                            
-                            if (!isNaN(scoreVal)) {
-                                if (virtualGame.turn() === 'b') scoreVal = -scoreVal;
-                                activeMoveScore = { 
-                                    type: scoreType, 
-                                    value: scoreVal / 100 
-                                };
-                            }
-                        }
-                    }
-
-                    if (msg.startsWith("bestmove")) {
-                        // Store the absolute latest calculated score prior to final bestmove output
-                        evaluations[currentMoveIdx] = activeMoveScore;
-                        lastScore = activeMoveScore.value; // set up next comparison
-                        currentMoveIdx++;
-                        analyzeNext();
-                    }
-                };
+                `;
+                // Keep UI scorecard hidden while job compiles
+                document.getElementById('analysis-summary-card').classList.add('hidden');
+                document.getElementById('eval-metric-text').innerText = "0.00";
+                document.getElementById('white-eval-bar').style.width = "50%";
+                document.getElementById('black-eval-bar').style.width = "50%";
+                return;
             }
 
-            analyzeNext();
-        };
+            // Otherwise, render full analytical classifications of this job
+            const moves = job.moves;
+            const evals = job.evaluations;
 
-        function renderAnalysisList(moves, evals) {
-            const container = document.getElementById('analysis-box');
-            container.innerHTML = "";
-            
             let html = `<div class="space-y-2">`;
             let lastScore = 0.30;
 
-            // Scorecard counters
             let stats = {
                 w: { brilliant: 0, great: 0, best: 0, mistake: 0 },
                 b: { brilliant: 0, great: 0, best: 0, mistake: 0 }
@@ -988,7 +1075,6 @@
 
             for(let i = 0; i < moves.length; i++) {
                 let currentScore = evals[i] ? (evals[i].type === 'cp' ? evals[i].value : (evals[i].value > 0 ? 15 : -15)) : lastScore;
-                
                 let delta = currentScore - lastScore;
                 if (i % 2 === 1) delta = -delta; 
 
@@ -1036,7 +1122,7 @@
 
                 const playerLabel = isWhite ? 'White' : 'Black';
                 html += `
-                    <div class="p-2 bg-slate-900/60 rounded-xl border border-slate-800 flex justify-between items-center font-retro text-[8px]">
+                    <div class="p-2 bg-slate-900/60 rounded-xl border border-slate-800 flex justify-between items-center font-retro text-[8px] hover:bg-slate-900 transition cursor-pointer" onclick="board.position('${moves[i].fen || moves[i].after}')">
                         <div class="flex flex-col gap-1">
                             <span class="font-bold text-slate-300">${i + 1}. ${playerLabel}: ${moves[i].san}</span>
                             <span class="text-slate-500 text-[7px]">Eval: ${currentScore > 0 ? '+' : ''}${currentScore.toFixed(2)} (${delta >= 0 ? '+' : ''}${delta.toFixed(2)})</span>
@@ -1049,7 +1135,7 @@
                 lastScore = currentScore;
             }
 
-            container.innerHTML = html + "</div>";
+            analysisBox.innerHTML = html + "</div>";
 
             // Update Side-by-side Scorecard Display
             document.getElementById('w-stat-brilliant').innerText = stats.w.brilliant;
@@ -1075,6 +1161,106 @@
             document.getElementById('black-eval-bar').style.width = `${100 - percentage}%`;
         }
 
+        document.getElementById('analyze-btn').onclick = () => {
+            const movesList = game.history({ verbose: true });
+            if (movesList.length === 0) {
+                showToast("Play some moves before analyzing!");
+                return;
+            }
+
+            // Create a completely new Analysis Job object in the array
+            const jobId = Date.now();
+            const job = {
+                id: jobId,
+                level: currentSelectedLevel,
+                date: new Date().toLocaleDateString(),
+                moves: movesList,
+                evaluations: [],
+                status: "running",
+                progress: 0,
+                currentIndex: 0,
+                lastKnownScore: 0.30,
+                worker: buildBypassedWorker(STOCKFISH_CDN)
+            };
+
+            activeAnalysisJobs.push(job);
+            selectedJobId = jobId;
+            
+            // Render the live Job carousel immediately
+            renderJobsCarousel();
+            renderJobEvaluationView(job);
+
+            // Trigger worker startup
+            job.worker.postMessage("uci");
+
+            function runWorkerStep() {
+                if (job.currentIndex >= job.moves.length) {
+                    // Job finished! Update details and terminate this job's worker
+                    job.status = "completed";
+                    job.progress = 100;
+                    job.worker.terminate();
+                    showToast(`📊 Analysis of Level ${job.level} finished in the background!`);
+                    
+                    renderJobsCarousel();
+                    if (selectedJobId === job.id) {
+                        renderJobEvaluationView(job);
+                    }
+                    return;
+                }
+
+                // Push position to evaluate
+                const moveState = job.moves[job.currentIndex];
+                const targetFen = moveState.fen || moveState.after;
+
+                job.worker.postMessage(`position fen ${targetFen}`);
+                job.worker.postMessage("go depth 16");
+
+                let activeStepScore = { type: 'cp', value: job.lastKnownScore };
+
+                job.worker.onmessage = function(e) {
+                    const msg = e.data;
+                    
+                    if (msg.startsWith("info") && msg.includes("score")) {
+                        const parts = msg.split(" ");
+                        const scoreIdx = parts.indexOf("score");
+                        if (scoreIdx !== -1) {
+                            const scoreType = parts[scoreIdx + 1];
+                            let scoreVal = parseInt(parts[scoreIdx + 2], 10);
+                            
+                            if (!isNaN(scoreVal)) {
+                                // Black inversion alignment
+                                if ((job.currentIndex % 2 === 1)) scoreVal = -scoreVal;
+                                activeStepScore = { 
+                                    type: scoreType, 
+                                    value: scoreVal / 100 
+                                };
+                            }
+                        }
+                    }
+
+                    if (msg.startsWith("bestmove")) {
+                        job.evaluations[job.currentIndex] = activeStepScore;
+                        job.lastKnownScore = activeStepScore.value;
+
+                        // Increment step progress
+                        job.currentIndex++;
+                        job.progress = Math.round((job.currentIndex / job.moves.length) * 100);
+                        
+                        renderJobsCarousel();
+                        if (selectedJobId === job.id) {
+                            renderJobEvaluationView(job);
+                        }
+
+                        // Recursively process next moves sequence inside this background worker
+                        runWorkerStep();
+                    }
+                };
+            }
+
+            // Begin calculation sequence
+            runWorkerStep();
+        };
+
         // --- STAGE BUTTON CLICK EVENTS ---
         document.getElementById('start-btn').onclick = () => {
             game.reset();
@@ -1087,17 +1273,6 @@
             hidePromotionModal();
             document.getElementById('game-status').innerText = "YOUR TURN";
             document.getElementById('analyze-btn').setAttribute('disabled', 'true');
-            document.getElementById('eval-metric-text').innerText = "0.00";
-            document.getElementById('white-eval-bar').style.width = "50%";
-            document.getElementById('black-eval-bar').style.width = "50%";
-            document.getElementById('analysis-summary-card').classList.add('hidden');
-            document.getElementById('analysis-box').innerHTML = `
-                <div class="h-full flex flex-col items-center justify-center text-center p-4">
-                    <span class="text-3xl mb-2">📋</span>
-                    <p class="text-[9px] text-slate-400">Awaiting Battle Moves</p>
-                    <p class="text-slate-500 text-[8px] mt-2 leading-relaxed">Once you make your moves, run the evaluation engine here.</p>
-                </div>
-            `;
             initEngine();
             showToast("Stage Reset! Ready for battle.");
         };
